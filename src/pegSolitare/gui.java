@@ -1,122 +1,319 @@
 package pegSolitare;
 
 import javax.swing.*;
+import javax.swing.border.*;
 import java.awt.*;
 import java.awt.event.*;
 
+/**
+ * Main GUI for Peg Solitaire.
+ *
+ * Supports:
+ *  - Game mode selection: Manual or Automated
+ *  - Board type: English, Hexagon, Diamond
+ *  - Board size spinner (odd numbers only)
+ *  - New Game, Randomize Board
+ *  - Automated step-through with a Swing Timer
+ *  - Status bar and move counter
+ */
 public class gui {
 
-    private static Board board;
-    private static BoardPanel boardPanel;
-    private static JFrame frame;
-    private static JSpinner sizeSpinner;
+    // ── State ─────────────────────────────────────────────────────────
+    private static Game        currentGame;
+    private static BoardPanel  boardPanel;
+    private static JFrame      frame;
+
+    // Controls
+    private static JSpinner     sizeSpinner;
     private static JRadioButton rbEnglish, rbHexagon, rbDiamond;
-    private static JLabel statusLabel;
+    private static JRadioButton rbManual, rbAutomated;
+    private static JLabel       statusLabel;
+    private static JLabel       modeLabel;
+    private static JButton      newGameBtn;
+    private static JButton      randomizeBtn;
+    private static JButton      stepBtn;      // step one move (automated)
+    private static JButton      runBtn;       // run automatically
+    private static JButton      stopBtn;      // stop auto-run
+
+    // Automated timer
+    private static Timer autoTimer;
+
+    // ── GUI Creation ──────────────────────────────────────────────────
 
     public static JFrame createGUI() {
         frame = new JFrame("Peg Solitaire");
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        frame.setSize(800, 700);
-        frame.setLayout(new BorderLayout());
+        frame.setSize(920, 680);
+        frame.setLayout(new BorderLayout(8, 8));
+        frame.getRootPane().setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
 
-        // ── Left control panel ──────────────────────────────────────
-        JPanel controlPanel = new JPanel();
-        controlPanel.setLayout(new BoxLayout(controlPanel, BoxLayout.Y_AXIS));
-        controlPanel.setBorder(BorderFactory.createEmptyBorder(20, 15, 20, 15));
-        controlPanel.setPreferredSize(new Dimension(160, 0));
+        frame.add(buildControlPanel(), BorderLayout.WEST);
+        boardPanel = new BoardPanel(() -> onMoveCompleted());
+        frame.add(boardPanel, BorderLayout.CENTER);
+        frame.add(buildStatusBar(), BorderLayout.SOUTH);
 
-        // Board size spinner
-        JLabel sizeLabel = new JLabel("Board Size");
-        sizeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        sizeSpinner = new JSpinner(new SpinnerNumberModel(7, 7, 99, 2));
-        sizeSpinner.addChangeListener(e -> {
-            int val = (int) sizeSpinner.getValue();
-            if (val % 2 == 0) {
-                sizeSpinner.setValue(val - 1); // snap to next odd
-            }
-        });
-        sizeSpinner.setMaximumSize(new Dimension(80, 30));
-        sizeSpinner.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        // Board type radio buttons
-        JLabel typeLabel = new JLabel("Board Type");
-        typeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        rbEnglish  = new JRadioButton("English",  true);
-        rbHexagon  = new JRadioButton("Hexagon",  false);
-        rbDiamond  = new JRadioButton("Diamond",  false);
-        rbEnglish.setAlignmentX(Component.LEFT_ALIGNMENT);
-        rbHexagon.setAlignmentX(Component.LEFT_ALIGNMENT);
-        rbDiamond.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        ButtonGroup group = new ButtonGroup();
-        group.add(rbEnglish);
-        group.add(rbHexagon);
-        group.add(rbDiamond);
-
-        // New Game button
-        JButton newGameBtn = new JButton("New Game");
-        newGameBtn.setAlignmentX(Component.LEFT_ALIGNMENT);
-        newGameBtn.addActionListener(e -> startNewGame());
-
-        // Assemble control panel
-        controlPanel.add(sizeLabel);
-        controlPanel.add(Box.createVerticalStrut(4));
-        controlPanel.add(sizeSpinner);
-        controlPanel.add(Box.createVerticalStrut(16));
-        controlPanel.add(typeLabel);
-        controlPanel.add(Box.createVerticalStrut(4));
-        controlPanel.add(rbEnglish);
-        controlPanel.add(rbHexagon);
-        controlPanel.add(rbDiamond);
-        controlPanel.add(Box.createVerticalStrut(20));
-        controlPanel.add(newGameBtn);
-
-        // ── Status bar ───────────────────────────────────────────────
-        statusLabel = new JLabel("Select options and click New Game.");
-        statusLabel.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 10));
-
-        // ── Board panel (center) ─────────────────────────────────────
-        boardPanel = new BoardPanel();
-
-        frame.add(controlPanel, BorderLayout.WEST);
-        frame.add(boardPanel,   BorderLayout.CENTER);
-        frame.add(statusLabel,  BorderLayout.SOUTH);
+        // Automated timer (fires every AUTO_DELAY_MS ms)
+        autoTimer = new Timer(AutomatedGame.AUTO_DELAY_MS, e -> autoStep());
+        autoTimer.setRepeats(true);
 
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
 
-        // Start with a default English-7 board
         startNewGame();
         return frame;
     }
 
-    // ── Start / reset game ────────────────────────────────────────────
+    // ── Control panel ─────────────────────────────────────────────────
+
+    private static JPanel buildControlPanel() {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 14));
+        p.setPreferredSize(new Dimension(170, 0));
+
+        // ── Game Mode ──
+        p.add(sectionLabel("Game Mode"));
+        rbManual    = radio("Manual",    true);
+        rbAutomated = radio("Automated", false);
+        ButtonGroup modeGroup = new ButtonGroup();
+        modeGroup.add(rbManual);
+        modeGroup.add(rbAutomated);
+        p.add(rbManual);
+        p.add(rbAutomated);
+        p.add(gap(14));
+
+        // ── Board Type ──
+        p.add(sectionLabel("Board Type"));
+        rbEnglish = radio("English", true);
+        rbHexagon = radio("Hexagon", false);
+        rbDiamond = radio("Diamond", false);
+        ButtonGroup typeGroup = new ButtonGroup();
+        typeGroup.add(rbEnglish);
+        typeGroup.add(rbHexagon);
+        typeGroup.add(rbDiamond);
+        p.add(rbEnglish);
+        p.add(rbHexagon);
+        p.add(rbDiamond);
+        p.add(gap(14));
+
+        // ── Board Size ──
+        p.add(sectionLabel("Board Size"));
+        sizeSpinner = new JSpinner(new SpinnerNumberModel(7, 5, 99, 2));
+        sizeSpinner.addChangeListener(e -> {
+            int v = (int) sizeSpinner.getValue();
+            if (v % 2 == 0) sizeSpinner.setValue(v + 1);
+        });
+        sizeSpinner.setMaximumSize(new Dimension(80, 28));
+        sizeSpinner.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(sizeSpinner);
+        p.add(gap(18));
+
+        // ── Buttons ──
+        newGameBtn   = button("New Game",      e -> startNewGame());
+        randomizeBtn = button("Randomize",     e -> randomizeBoard());
+        stepBtn      = button("Step",          e -> manualStep());
+        runBtn       = button("Run Auto",      e -> startAutoRun());
+        stopBtn      = button("Stop",          e -> stopAutoRun());
+
+        stopBtn.setEnabled(false);
+        updateAutomatedButtonsVisible(false);
+
+        p.add(newGameBtn);
+        p.add(gap(6));
+        p.add(randomizeBtn);
+        p.add(gap(14));
+        p.add(stepBtn);
+        p.add(gap(6));
+        p.add(runBtn);
+        p.add(gap(6));
+        p.add(stopBtn);
+        p.add(Box.createVerticalGlue());
+
+        // ── Current mode display ──
+        modeLabel = new JLabel("Mode: Manual");
+        modeLabel.setFont(new Font("SansSerif", Font.ITALIC, 11));
+        modeLabel.setForeground(new Color(100, 100, 120));
+        modeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        p.add(modeLabel);
+
+        // Update automated controls visibility when mode changes
+        rbManual.addActionListener(e    -> updateAutomatedButtonsVisible(false));
+        rbAutomated.addActionListener(e -> updateAutomatedButtonsVisible(true));
+
+        return p;
+    }
+
+    private static JPanel buildStatusBar() {
+        JPanel bar = new JPanel(new BorderLayout());
+        bar.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(200, 200, 210)),
+            BorderFactory.createEmptyBorder(5, 10, 5, 10)));
+        statusLabel = new JLabel("Select options and click New Game.");
+        statusLabel.setFont(new Font("SansSerif", Font.PLAIN, 13));
+        bar.add(statusLabel, BorderLayout.CENTER);
+        return bar;
+    }
+
+    // ── Game actions ──────────────────────────────────────────────────
+
     private static void startNewGame() {
-        int size = (int) sizeSpinner.getValue();
-        String type = rbEnglish.isSelected() ? "English"
-                    : rbHexagon.isSelected()  ? "Hexagon"
-                    : "Diamond";
+        stopAutoRun();
+        int    size = (int) sizeSpinner.getValue();
+        String type = selectedBoardType();
+        boolean auto = rbAutomated.isSelected();
 
-        board = new Board(size, type);
-        boardPanel.setBoard(board);
+        currentGame = auto ? new AutomatedGame(size, type)
+                           : new ManualGame(size, type);
+        boardPanel.setGame(currentGame);
+        boardPanel.clearLastMove();
         boardPanel.repaint();
-        statusLabel.setText("New " + type + " game started (size " + size + "). Pegs: " + board.countPegs());
+        modeLabel.setText("Mode: " + currentGame.getModeName());
+        updateStatus("New " + type + " game — " + currentGame.getModeName()
+                     + " (size " + size + ")  |  Pegs: " + currentGame.getBoard().countPegs());
+        updateButtonStates();
     }
 
-    // ── Called by BoardPanel after every move ─────────────────────────
-    public static void onMoveCompleted() {
-        int pegs = board.countPegs();
-        if (pegs == 1) {
-            statusLabel.setText("You win! Only 1 peg remaining!");
-            JOptionPane.showMessageDialog(frame, "Congratulations! You won!", "Game Over", JOptionPane.INFORMATION_MESSAGE);
-        } else if (!board.hasValidMoves()) {
-            statusLabel.setText("No more moves. Game over. Pegs remaining: " + pegs);
-            JOptionPane.showMessageDialog(frame, "No valid moves left.\nPegs remaining: " + pegs, "Game Over", JOptionPane.INFORMATION_MESSAGE);
+    private static void randomizeBoard() {
+        if (currentGame == null) return;
+        stopAutoRun();
+        currentGame.randomizeBoard();
+        boardPanel.clearLastMove();
+        boardPanel.clearSelection();
+        boardPanel.repaint();
+        if (currentGame.isGameOver()) {
+            onMoveCompleted(); // show game-over dialog if randomize left no moves
         } else {
-            statusLabel.setText("Pegs remaining: " + pegs);
+            updateStatus("Board randomized.  |  " + currentGame.getStatusMessage());
+            updateButtonStates();
         }
-        boardPanel.repaint();
     }
+
+    /** Perform one automated step manually (Step button). */
+    private static void manualStep() {
+        if (currentGame == null || !(currentGame instanceof AutomatedGame)) return;
+        if (currentGame.isGameOver()) return;
+        doAutoStep();
+    }
+
+    private static void startAutoRun() {
+        if (currentGame == null || !(currentGame instanceof AutomatedGame)) return;
+        runBtn.setEnabled(false);
+        stepBtn.setEnabled(false);
+        stopBtn.setEnabled(true);
+        autoTimer.start();
+    }
+
+    private static void stopAutoRun() {
+        if (autoTimer != null) autoTimer.stop();
+        if (stopBtn      != null) stopBtn.setEnabled(false);
+        if (newGameBtn   != null) newGameBtn.setEnabled(true);
+        if (randomizeBtn != null) randomizeBtn.setEnabled(true);
+        boolean over = currentGame == null || currentGame.isGameOver();
+        if (runBtn  != null) runBtn.setEnabled(currentGame instanceof AutomatedGame && !over);
+        if (stepBtn != null) stepBtn.setEnabled(currentGame instanceof AutomatedGame && !over);
+    }
+
+    /** Timer callback: perform one step and stop if game over. */
+    private static void autoStep() {
+        doAutoStep();
+        if (currentGame.isGameOver()) stopAutoRun();
+    }
+
+    private static void doAutoStep() {
+        if (currentGame == null || currentGame.isGameOver()) return;
+        int[] move = currentGame.getNextMove();
+        if (move == null) {
+            // No moves left — game is over; onMoveCompleted handles the UI update
+            onMoveCompleted();
+            return;
+        }
+        currentGame.makeMove(move[0], move[1], move[2], move[3]);
+        boardPanel.setLastMove(move[0], move[1], move[2], move[3]);
+        boardPanel.repaint();
+        onMoveCompleted();
+    }
+
+    // ── Called by BoardPanel after every manual move ──────────────────
+
+    public static void onMoveCompleted() {
+        if (currentGame == null) return;
+        updateStatus(currentGame.getStatusMessage());
+        updateButtonStates();
+
+        if (currentGame.isGameOver()) {
+            stopAutoRun();
+            int pegs = currentGame.getBoard().countPegs();
+            String msg = pegs == 1
+                ? "Congratulations — you won with 1 peg left!"
+                : "Game over. Pegs remaining: " + pegs;
+            SwingUtilities.invokeLater(() ->
+                JOptionPane.showMessageDialog(frame, msg, "Game Over",
+                    pegs == 1 ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE));
+        }
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────
+
+    private static String selectedBoardType() {
+        return rbHexagon.isSelected() ? "Hexagon"
+             : rbDiamond.isSelected() ? "Diamond"
+             : "English";
+    }
+
+    private static void updateAutomatedButtonsVisible(boolean auto) {
+        stepBtn.setVisible(auto);
+        runBtn.setVisible(auto);
+        stopBtn.setVisible(auto);
+    }
+
+    private static void updateButtonStates() {
+        boolean auto    = currentGame instanceof AutomatedGame;
+        boolean running = autoTimer != null && autoTimer.isRunning();
+        boolean over    = currentGame == null || currentGame.isGameOver();
+
+        // New Game and Randomize are always available unless the timer is mid-run
+        newGameBtn.setEnabled(!running);
+        randomizeBtn.setEnabled(!running);
+
+        stopBtn.setEnabled(running);
+        stepBtn.setEnabled(auto && !over && !running);
+        runBtn.setEnabled(auto && !over && !running);
+    }
+
+    private static void updateStatus(String msg) {
+        statusLabel.setText(msg);
+    }
+
+    // ── Widget helpers ────────────────────────────────────────────────
+
+    private static JLabel sectionLabel(String text) {
+        JLabel l = new JLabel(text);
+        l.setFont(new Font("SansSerif", Font.BOLD, 12));
+        l.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return l;
+    }
+
+    private static JRadioButton radio(String label, boolean selected) {
+        JRadioButton r = new JRadioButton(label, selected);
+        r.setAlignmentX(Component.LEFT_ALIGNMENT);
+        r.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        return r;
+    }
+
+    private static JButton button(String label, ActionListener al) {
+        JButton b = new JButton(label);
+        b.setAlignmentX(Component.LEFT_ALIGNMENT);
+        b.setMaximumSize(new Dimension(140, 30));
+        b.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        b.addActionListener(al);
+        return b;
+    }
+
+    private static Component gap(int height) {
+        return Box.createVerticalStrut(height);
+    }
+
+    // ── Entry point ───────────────────────────────────────────────────
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(gui::createGUI);

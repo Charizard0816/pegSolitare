@@ -5,7 +5,7 @@ import java.util.Random;
 /**
  * Board model.
  * Cell values:
- *   -1 = not part of the board
+ *   -1 = not part of the board (padding)
  *    0 = empty hole
  *    1 = peg
  */
@@ -74,7 +74,7 @@ public class Board {
     // ── Randomize ─────────────────────────────────────────────────────
 
     /**
-     * Randomize the board by playing random valid moves forward from the
+     * Randomise the board by playing random valid moves forward from the
      * current state. The result is always reachable from wherever the game
      * currently is -- no illegal peg patterns are ever produced.
      *
@@ -174,4 +174,14 @@ public class Board {
     public int getCell(int r, int c) { return grid[r][c]; }
     public int getSize()             { return size; }
     public String getType()          { return type; }
+
+    /**
+     * Restore the board to an exact grid state (used by GameReplayer
+     * to reproduce a randomize event from a recorded file).
+     */
+    void setGrid(int[][] newGrid) {
+        for (int r = 0; r < size; r++)
+            for (int c = 0; c < size; c++)
+                grid[r][c] = newGrid[r][c];
+    }
 }

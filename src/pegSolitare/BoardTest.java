@@ -2,7 +2,7 @@ package pegSolitare;
 
 /**
  * Unit tests for Board, ManualGame, and AutomatedGame.
- * Run with: java pegSolitare/*.java && java pegSolitare.BoardTest
+ * Run with: javac pegSolitare/*.java && java pegSolitare.BoardTest
  */
 public class BoardTest {
 
@@ -116,15 +116,15 @@ public class BoardTest {
         // Board shape should be preserved — corners still OUT for English
         assertTrue("Randomize: corners still OUT", rb.getCell(0, 0) == Board.OUT);
 
-        // Run multiple times to check variance
+        // Run multiple times to check variance — at least one result must differ
         int sameCount = 0;
         int prev = rb.countPegs();
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 20; i++) {
             mg.randomizeBoard();
             if (mg.getBoard().countPegs() == prev) sameCount++;
             prev = mg.getBoard().countPegs();
         }
-        assertTrue("Randomize: produces varied results", sameCount < 10);
+        assertTrue("Randomize: produces varied results", sameCount < 20);
     }
 
     // ── Class hierarchy ───────────────────────────────────────────────

@@ -4,6 +4,7 @@ import javax.swing.*;
 import javax.swing.border.*;
 import java.awt.*;
 import java.awt.event.*;
+import java.io.*;
 
 /**
  * Main GUI for Peg Solitaire.
@@ -38,6 +39,14 @@ public class gui {
     // Automated timer
     private static Timer autoTimer;
 
+    // Record / Replay
+    private static JCheckBox   recordCheckBox;
+    private static JButton     replayBtn;
+    private static GameRecorder recorder    = new GameRecorder();
+    private static GameReplayer replayer    = new GameReplayer();
+    private static Timer        replayTimer;
+    private static boolean      replayMode  = false;
+
     // ── GUI Creation ──────────────────────────────────────────────────
 
     public static JFrame createGUI() {
@@ -55,6 +64,10 @@ public class gui {
         // Automated timer (fires every AUTO_DELAY_MS ms)
         autoTimer = new Timer(AutomatedGame.AUTO_DELAY_MS, e -> autoStep());
         autoTimer.setRepeats(true);
+
+        // Replay timer (same speed as autoplay)
+        replayTimer = new Timer(AutomatedGame.AUTO_DELAY_MS, e -> replayStep());
+        replayTimer.setRepeats(true);
 
         frame.setLocationRelativeTo(null);
         frame.setVisible(true);
@@ -127,6 +140,17 @@ public class gui {
         p.add(runBtn);
         p.add(gap(6));
         p.add(stopBtn);
+        p.add(gap(14));
+
+        // ── Record / Replay ──
+        recordCheckBox = new JCheckBox("Record game", false);
+        recordCheckBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+        recordCheckBox.setFont(new Font("SansSerif", Font.PLAIN, 12));
+        p.add(recordCheckBox);
+        p.add(gap(6));
+
+        replayBtn = button("Replay", e -> startReplay());
+        p.add(replayBtn);
         p.add(Box.createVerticalGlue());
 
         // ── Current mode display ──
@@ -158,12 +182,34 @@ public class gui {
 
     private static void startNewGame() {
         stopAutoRun();
+        stopReplay();
+        recorder.close(); // close any active recording
+
         int    size = (int) sizeSpinner.getValue();
         String type = selectedBoardType();
         boolean auto = rbAutomated.isSelected();
 
         currentGame = auto ? new AutomatedGame(size, type)
                            : new ManualGame(size, type);
+
+        // Start recording if checkbox is ticked
+        if (recordCheckBox.isSelected()) {
+            try {
+                File f = chooseRecordFile();
+                if (f != null) {
+                    recorder.start(f, type, size, currentGame.getModeName());
+                    currentGame.setRecorder(recorder);
+                } else {
+                    recordCheckBox.setSelected(false);
+                }
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(frame,
+                    "Could not open record file:\n" + ex.getMessage(),
+                    "Record Error", JOptionPane.ERROR_MESSAGE);
+                recordCheckBox.setSelected(false);
+            }
+        }
+
         boardPanel.setGame(currentGame);
         boardPanel.clearLastMove();
         boardPanel.repaint();
@@ -171,6 +217,14 @@ public class gui {
         updateStatus("New " + type + " game — " + currentGame.getModeName()
                      + " (size " + size + ")  |  Pegs: " + currentGame.getBoard().countPegs());
         updateButtonStates();
+    }
+
+    private static File chooseRecordFile() {
+        JFileChooser fc = new JFileChooser();
+        fc.setDialogTitle("Save Recording As");
+        fc.setSelectedFile(new File("game_recording.txt"));
+        int result = fc.showSaveDialog(frame);
+        return (result == JFileChooser.APPROVE_OPTION) ? fc.getSelectedFile() : null;
     }
 
     private static void randomizeBoard() {
@@ -242,6 +296,7 @@ public class gui {
 
         if (currentGame.isGameOver()) {
             stopAutoRun();
+            recorder.close(); // finalise the recording file
             int pegs = currentGame.getBoard().countPegs();
             String msg = pegs == 1
                 ? "Congratulations — you won with 1 peg left!"
@@ -250,6 +305,90 @@ public class gui {
                 JOptionPane.showMessageDialog(frame, msg, "Game Over",
                     pegs == 1 ? JOptionPane.INFORMATION_MESSAGE : JOptionPane.WARNING_MESSAGE));
         }
+    }
+
+    // ── Replay ───────────────────────────────────────────────────────
+
+    private static void startReplay() {
+        JFileChooser fc = new JFileChooser();
+        fc.setDialogTitle("Open Recording");
+        fc.setSelectedFile(new File("game_recording.txt"));
+        if (fc.showOpenDialog(frame) != JFileChooser.APPROVE_OPTION) return;
+
+        String err = replayer.load(fc.getSelectedFile());
+        if (err != null) {
+            JOptionPane.showMessageDialog(frame, "Could not load recording:\n" + err,
+                "Replay Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        // Set up a fresh game matching the recording's header
+        stopAutoRun();
+        recorder.close();
+        replayMode = true;
+
+        String type = replayer.getBoardType();
+        int    size = replayer.getBoardSize();
+        String mode = replayer.getGameMode();
+
+        currentGame = mode.equals("Automated") ? new AutomatedGame(size, type)
+                                               : new ManualGame(size, type);
+        boardPanel.setGame(currentGame);
+        boardPanel.clearLastMove();
+        boardPanel.repaint();
+        modeLabel.setText("Replay: " + mode);
+        updateStatus("Replaying " + type + " " + mode + " game (size " + size + ")…");
+        updateButtonStates();
+
+        replayTimer.start();
+    }
+
+    private static void replayStep() {
+        if (!replayer.hasMore()) {
+            stopReplay();
+            onMoveCompleted();
+            return;
+        }
+
+        GameReplayer.ReplayEvent ev = replayer.nextEvent();
+
+        switch (ev.type) {
+            case MOVE:
+                currentGame.makeMove(ev.fromR, ev.fromC, ev.toR, ev.toC);
+                boardPanel.setLastMove(ev.fromR, ev.fromC, ev.toR, ev.toC);
+                boardPanel.repaint();
+                updateStatus(currentGame.getStatusMessage()
+                    + "  [replay " + replayer.currentIndex()
+                    + "/" + replayer.totalEvents() + "]");
+                break;
+
+            case RANDOMIZE:
+                currentGame.getBoard().setGrid(ev.grid);
+                currentGame.getBoard(); // force re-read
+                boardPanel.clearLastMove();
+                boardPanel.repaint();
+                updateStatus("Replaying randomize…  [" + replayer.currentIndex()
+                    + "/" + replayer.totalEvents() + "]");
+                break;
+
+            case END:
+                stopReplay();
+                onMoveCompleted();
+                break;
+
+            default:
+                break;
+        }
+
+        if (currentGame.isGameOver()) {
+            stopReplay();
+            onMoveCompleted();
+        }
+    }
+
+    private static void stopReplay() {
+        if (replayTimer != null) replayTimer.stop();
+        replayMode = false;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────
@@ -269,15 +408,18 @@ public class gui {
     private static void updateButtonStates() {
         boolean auto    = currentGame instanceof AutomatedGame;
         boolean running = autoTimer != null && autoTimer.isRunning();
+        boolean replaying = replayTimer != null && replayTimer.isRunning();
         boolean over    = currentGame == null || currentGame.isGameOver();
+        boolean blocked = running || replaying;
 
-        // New Game and Randomize are always available unless the timer is mid-run
-        newGameBtn.setEnabled(!running);
-        randomizeBtn.setEnabled(!running);
+        newGameBtn.setEnabled(!blocked);
+        randomizeBtn.setEnabled(!blocked && !replayMode);
+        recordCheckBox.setEnabled(!blocked && !replayMode);
+        replayBtn.setEnabled(!blocked);
 
         stopBtn.setEnabled(running);
-        stepBtn.setEnabled(auto && !over && !running);
-        runBtn.setEnabled(auto && !over && !running);
+        stepBtn.setEnabled(auto && !over && !running && !replaying);
+        runBtn.setEnabled(auto && !over && !running && !replaying);
     }
 
     private static void updateStatus(String msg) {

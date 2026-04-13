@@ -2,13 +2,14 @@ package pegSolitare;
 
 /**
  * Abstract base class for both Manual and Automated peg solitaire games.
- * Defines the common contract that all game modes must fulfill.
+ * Defines the common contract that all game modes must fulfil.
  */
 public abstract class Game {
 
-    protected Board board;
-    protected int moveCount;
-    protected boolean gameOver;
+    protected Board        board;
+    protected int          moveCount;
+    protected boolean      gameOver;
+    protected GameRecorder recorder; // null when recording is off
 
     public Game(int size, String boardType) {
         this.board     = new Board(size, boardType);
@@ -26,11 +27,12 @@ public abstract class Game {
         onNewGame();
     }
 
-    /** Randomize the board state: scatter pegs randomly, keeping the shape. */
+    /** Randomise the board state: scatter pegs randomly, keeping the shape. */
     public void randomizeBoard() {
         board.randomize();
         moveCount = 0;
         gameOver  = !board.hasValidMoves();
+        if (recorder != null) recorder.recordRandomize(board);
         onRandomize();
     }
 
@@ -44,6 +46,7 @@ public abstract class Game {
         if (ok) {
             moveCount++;
             checkGameOver();
+            if (recorder != null) recorder.recordMove(fromR, fromC, toR, toC);
         }
         return ok;
     }
@@ -71,6 +74,10 @@ public abstract class Game {
 
     /** Human-readable name for the game mode. */
     public abstract String getModeName();
+
+    // ── Recorder ─────────────────────────────────────────────────────
+
+    public void setRecorder(GameRecorder r) { this.recorder = r; }
 
     // ── Accessors ─────────────────────────────────────────────────────
 

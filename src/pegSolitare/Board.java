@@ -19,6 +19,9 @@ public class Board {
     private int size;
     private String type;
 
+    /** Cardinal jump directions: up, down, left, right (2-step). */
+    static final int[][] DIRS = {{-2,0},{2,0},{0,-2},{0,2}};
+
     public Board(int size, String type) {
         this.size = size;
         this.type = type;
@@ -28,13 +31,23 @@ public class Board {
 
     // ── Board initialization ──────────────────────────────────────────
 
+    /**
+     * Dispatch table mapping board type names to their build methods.
+     * Adding a new board type requires only adding one entry here —
+     * no switch or if-else modification needed (Open-Closed Principle).
+     */
+    private static final java.util.Map<String, java.util.function.Consumer<Board>> BUILDERS;
+    static {
+        BUILDERS = new java.util.HashMap<>();
+        BUILDERS.put("English", Board::buildEnglish);
+        BUILDERS.put("Hexagon", Board::buildHexagon);
+        BUILDERS.put("Diamond", Board::buildDiamond);
+    }
+
     private void initBoard() {
-        switch (type) {
-            case "English":  buildEnglish();  break;
-            case "Hexagon":  buildHexagon();  break;
-            case "Diamond":  buildDiamond();  break;
-            default:         buildEnglish();  break;
-        }
+        java.util.function.Consumer<Board> builder =
+            BUILDERS.getOrDefault(type, Board::buildEnglish);
+        builder.accept(this);
     }
 
     private void buildEnglish() {
@@ -90,15 +103,13 @@ public class Board {
         int totalPegs   = countPegs();
         int targetMoves = 1 + rng.nextInt(Math.max(1, totalPegs - 1));
 
-        int[][] dirs = {{-2,0},{2,0},{0,-2},{0,2}};
-
         for (int step = 0; step < targetMoves; step++) {
             // Collect all valid moves from the current state
             java.util.List<int[]> moves = new java.util.ArrayList<>();
             for (int r = 0; r < size; r++) {
                 for (int c = 0; c < size; c++) {
                     if (grid[r][c] != PEG) continue;
-                    for (int[] d : dirs) {
+                    for (int[] d : DIRS) {
                         int tr = r + d[0], tc = c + d[1];
                         if (isValidMove(r, c, tr, tc))
                             moves.add(new int[]{r, c, tr, tc});
@@ -147,11 +158,10 @@ public class Board {
     }
 
     public boolean hasValidMoves() {
-        int[][] dirs = {{-2,0},{2,0},{0,-2},{0,2}};
         for (int r = 0; r < size; r++)
             for (int c = 0; c < size; c++) {
                 if (grid[r][c] != PEG) continue;
-                for (int[] d : dirs)
+                for (int[] d : DIRS)
                     if (isValidMove(r, c, r + d[0], c + d[1])) return true;
             }
         return false;
@@ -180,8 +190,16 @@ public class Board {
      * to reproduce a randomize event from a recorded file).
      */
     void setGrid(int[][] newGrid) {
-        for (int r = 0; r < size; r++)
+        if (newGrid == null || newGrid.length != size)
+            throw new IllegalArgumentException(
+                "setGrid: expected " + size + "x" + size + " grid, got "
+                + (newGrid == null ? "null" : newGrid.length + " rows"));
+        for (int r = 0; r < size; r++) {
+            if (newGrid[r].length != size)
+                throw new IllegalArgumentException(
+                    "setGrid: row " + r + " has " + newGrid[r].length + " cols, expected " + size);
             for (int c = 0; c < size; c++)
                 grid[r][c] = newGrid[r][c];
+        }
     }
 }

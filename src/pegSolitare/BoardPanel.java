@@ -70,11 +70,11 @@ public class BoardPanel extends JPanel implements MouseListener {
         g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
-        int size     = board.getSize();
-        int cellSize = Math.min(getWidth(), getHeight()) / (size + 1);
-        int pegR     = cellSize * 2 / 5;
-        int offsetX  = (getWidth()  - size * cellSize) / 2;
-        int offsetY  = (getHeight() - size * cellSize) / 2;
+        int size      = board.getSize();
+        int cellSize  = computeCellSize(size);
+        int pegRadius = cellSize * 2 / 5;
+        int offsetX   = (getWidth()  - size * cellSize) / 2;
+        int offsetY   = (getHeight() - size * cellSize) / 2;
 
         for (int r = 0; r < size; r++) {
             for (int c = 0; c < size; c++) {
@@ -96,12 +96,12 @@ public class BoardPanel extends JPanel implements MouseListener {
                     if (selectedRow >= 0 && board.isValidMove(selectedRow, selectedCol, r, c)) {
                         // Valid destination highlight
                         g2.setColor(COLOR_VALID_DEST);
-                        g2.fillOval(cx - pegR, cy - pegR, pegR * 2, pegR * 2);
+                        g2.fillOval(cx - pegRadius, cy - pegRadius, pegRadius * 2, pegRadius * 2);
                         g2.setColor(COLOR_VALID_DEST.darker());
-                        g2.drawOval(cx - pegR, cy - pegR, pegR * 2, pegR * 2);
+                        g2.drawOval(cx - pegRadius, cy - pegRadius, pegRadius * 2, pegRadius * 2);
                     } else {
                         g2.setColor(COLOR_HOLE);
-                        g2.fillOval(cx - pegR / 2, cy - pegR / 2, pegR, pegR);
+                        g2.fillOval(cx - pegRadius / 2, cy - pegRadius / 2, pegRadius, pegRadius);
                     }
                 } else { // PEG
                     boolean isSelected = (r == selectedRow && c == selectedCol);
@@ -109,22 +109,32 @@ public class BoardPanel extends JPanel implements MouseListener {
                     Color pegColor = isSelected ? COLOR_PEG_SEL
                                    : isLastDest ? COLOR_PEG_LAST
                                    : COLOR_PEG;
-
-                    // Shadow
-                    g2.setColor(new Color(0, 0, 0, 40));
-                    g2.fillOval(cx - pegR + 2, cy - pegR + 3, pegR * 2, pegR * 2);
-
-                    g2.setColor(pegColor);
-                    g2.fillOval(cx - pegR, cy - pegR, pegR * 2, pegR * 2);
-                    g2.setColor(pegColor.darker());
-                    g2.drawOval(cx - pegR, cy - pegR, pegR * 2, pegR * 2);
-
-                    // Highlight glint
-                    g2.setColor(new Color(255, 255, 255, 80));
-                    g2.fillOval(cx - pegR / 2, cy - pegR + 2, pegR / 2, pegR / 3);
+                    drawPeg(g2, cx, cy, pegRadius, pegColor);
                 }
             }
         }
+    }
+
+    // ── Private helpers ──────────────────────────────────────────────
+
+    /** Computes the pixel size of one board cell based on current panel dimensions. */
+    private int computeCellSize(int boardSize) {
+        return Math.min(getWidth(), getHeight()) / (boardSize + 1);
+    }
+
+    /** Draws a single peg circle with shadow and highlight glint. */
+    private void drawPeg(Graphics2D g2, int cx, int cy, int pegRadius, Color color) {
+        // Drop shadow
+        g2.setColor(new Color(0, 0, 0, 40));
+        g2.fillOval(cx - pegRadius + 2, cy - pegRadius + 3, pegRadius * 2, pegRadius * 2);
+        // Body
+        g2.setColor(color);
+        g2.fillOval(cx - pegRadius, cy - pegRadius, pegRadius * 2, pegRadius * 2);
+        g2.setColor(color.darker());
+        g2.drawOval(cx - pegRadius, cy - pegRadius, pegRadius * 2, pegRadius * 2);
+        // Highlight glint
+        g2.setColor(new Color(255, 255, 255, 80));
+        g2.fillOval(cx - pegRadius / 2, cy - pegRadius + 2, pegRadius / 2, pegRadius / 3);
     }
 
     // ── Mouse interaction (Manual mode only) ─────────────────────────
@@ -135,14 +145,16 @@ public class BoardPanel extends JPanel implements MouseListener {
         if (!(game instanceof ManualGame)) return;
 
         Board board    = game.getBoard();
-        int size       = board.getSize();
-        int cellSize   = Math.min(getWidth(), getHeight()) / (size + 1);
-        int offsetX    = (getWidth()  - size * cellSize) / 2;
-        int offsetY    = (getHeight() - size * cellSize) / 2;
+        int size    = board.getSize();
+        int cellSize = computeCellSize(size);
+        int offsetX  = (getWidth()  - size * cellSize) / 2;
+        int offsetY  = (getHeight() - size * cellSize) / 2;
 
         int col = (e.getX() - offsetX) / cellSize;
         int row = (e.getY() - offsetY) / cellSize;
 
+        // Guard against negative indices from clicks outside the board area
+        if (row < 0 || col < 0 || row >= size || col >= size) return;
         if (!board.inBounds(row, col)) return;
         if (board.getCell(row, col) == Board.OUT) return;
 

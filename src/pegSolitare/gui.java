@@ -17,7 +17,7 @@ import java.io.*;
  *  - Automated step-through with a Swing Timer
  *  - Status bar and move counter
  */
-public class gui {
+public class Gui {
 
     // ── State ─────────────────────────────────────────────────────────
     private static Game        currentGame;
@@ -189,8 +189,7 @@ public class gui {
         String type = selectedBoardType();
         boolean auto = rbAutomated.isSelected();
 
-        currentGame = auto ? new AutomatedGame(size, type)
-                           : new ManualGame(size, type);
+        currentGame = GameFactory.create(auto ? "Automated" : "Manual", size, type);
 
         // Start recording if checkbox is ticked
         if (recordCheckBox.isSelected()) {
@@ -331,8 +330,7 @@ public class gui {
         int    size = replayer.getBoardSize();
         String mode = replayer.getGameMode();
 
-        currentGame = mode.equals("Automated") ? new AutomatedGame(size, type)
-                                               : new ManualGame(size, type);
+        currentGame = GameFactory.create(mode, size, type);
         boardPanel.setGame(currentGame);
         boardPanel.clearLastMove();
         boardPanel.repaint();
@@ -352,10 +350,10 @@ public class gui {
 
         GameReplayer.ReplayEvent ev = replayer.nextEvent();
 
-        switch (ev.type) {
+        switch (ev.getType()) {
             case MOVE:
-                currentGame.makeMove(ev.fromR, ev.fromC, ev.toR, ev.toC);
-                boardPanel.setLastMove(ev.fromR, ev.fromC, ev.toR, ev.toC);
+                currentGame.makeMove(ev.getFromR(), ev.getFromC(), ev.getToR(), ev.getToC());
+                boardPanel.setLastMove(ev.getFromR(), ev.getFromC(), ev.getToR(), ev.getToC());
                 boardPanel.repaint();
                 updateStatus(currentGame.getStatusMessage()
                     + "  [replay " + replayer.currentIndex()
@@ -363,8 +361,7 @@ public class gui {
                 break;
 
             case RANDOMIZE:
-                currentGame.getBoard().setGrid(ev.grid);
-                currentGame.getBoard(); // force re-read
+                currentGame.getBoard().setGrid(ev.getGrid());
                 boardPanel.clearLastMove();
                 boardPanel.repaint();
                 updateStatus("Replaying randomize…  [" + replayer.currentIndex()
@@ -458,6 +455,6 @@ public class gui {
     // ── Entry point ───────────────────────────────────────────────────
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(gui::createGUI);
+        SwingUtilities.invokeLater(Gui::createGUI);
     }
 }

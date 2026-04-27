@@ -13,15 +13,11 @@ public class GameReplayer {
     public enum EventType { MOVE, RANDOMIZE, END, ERROR }
 
     public static class ReplayEvent {
-        public final EventType type;
-        // For MOVE:
-        public final int fromR, fromC, toR, toC;
-        // For RANDOMIZE: the restored board grid
-        public final int[][] grid;
-        // Header info (populated once after load())
-        public String boardType;
-        public int    boardSize;
-        public String gameMode;
+        private final EventType type;
+        // Valid for MOVE events only
+        private final int fromR, fromC, toR, toC;
+        // Valid for RANDOMIZE events only
+        private final int[][] grid;
 
         ReplayEvent(EventType t) {
             this.type = t; fromR = fromC = toR = toC = -1; grid = null;
@@ -35,6 +31,13 @@ public class GameReplayer {
             fromR = fromC = toR = toC = -1;
             this.grid = grid;
         }
+
+        public EventType getType()  { return type; }
+        public int  getFromR()      { return fromR; }
+        public int  getFromC()      { return fromC; }
+        public int  getToR()        { return toR; }
+        public int  getToC()        { return toC; }
+        public int[][] getGrid()    { return grid; }
     }
 
     private List<ReplayEvent> events = new ArrayList<>();
@@ -72,6 +75,7 @@ public class GameReplayer {
                         break;
 
                     case "MOVE":
+                        if (!headerFound) return "MOVE line before GAME header.";
                         if (parts.length < 5) return "Corrupt MOVE line.";
                         events.add(new ReplayEvent(
                             Integer.parseInt(parts[1]), Integer.parseInt(parts[2]),
@@ -79,6 +83,7 @@ public class GameReplayer {
                         break;
 
                     case "RAND":
+                        if (!headerFound) return "RAND line before GAME header.";
                         // Next line must be STATE <size>
                         String stateLine = br.readLine();
                         if (stateLine == null) return "Missing STATE after RAND.";

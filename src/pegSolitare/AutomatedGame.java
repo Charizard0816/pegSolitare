@@ -9,7 +9,7 @@ import java.util.List;
  * The computer selects moves automatically using a heuristic solver.
  *
  * Strategy (greedy heuristic):
- *   1. Prefer moves that jump toward the center of the board.
+ *   1. Prefer moves that jump toward the centre of the board.
  *   2. Among equal-distance moves, pick one that leaves the most future
  *      moves available (one-step look-ahead).
  *   3. Fall back to the first valid move if the heuristic is tied.
@@ -68,10 +68,10 @@ public class AutomatedGame extends Game {
     private int scoreMove(int[] m, int mid) {
         int fromR = m[0], fromC = m[1], toR = m[2], toC = m[3];
 
-        // Reward landing closer to the center
+        // Reward landing closer to the centre
         int distBefore = Math.abs(fromR - mid) + Math.abs(fromC - mid);
         int distAfter  = Math.abs(toR   - mid) + Math.abs(toC   - mid);
-        int centrality = distBefore - distAfter;   // positive = moved toward center
+        int centrality = distBefore - distAfter;   // positive = moved toward centre
 
         // One-step look-ahead: count moves available after this move
         board.applyMove(fromR, fromC, toR, toC);
@@ -85,11 +85,10 @@ public class AutomatedGame extends Game {
     private List<int[]> getAllValidMoves() {
         List<int[]> moves = new ArrayList<>();
         int size = board.getSize();
-        int[][] dirs = {{-2,0},{2,0},{0,-2},{0,2}};
         for (int r = 0; r < size; r++) {
             for (int c = 0; c < size; c++) {
                 if (board.getCell(r, c) != Board.PEG) continue;
-                for (int[] d : dirs) {
+                for (int[] d : Board.DIRS) {
                     int tr = r + d[0], tc = c + d[1];
                     if (board.isValidMove(r, c, tr, tc))
                         moves.add(new int[]{r, c, tr, tc});
@@ -99,18 +98,8 @@ public class AutomatedGame extends Game {
         return moves;
     }
 
+    /** Counts all valid moves by reusing getAllValidMoves(). */
     private int countAllValidMoves() {
-        int size = board.getSize();
-        int[][] dirs = {{-2,0},{2,0},{0,-2},{0,2}};
-        int count = 0;
-        for (int r = 0; r < size; r++) {
-            for (int c = 0; c < size; c++) {
-                if (board.getCell(r, c) != Board.PEG) continue;
-                for (int[] d : dirs) {
-                    if (board.isValidMove(r, c, r + d[0], c + d[1])) count++;
-                }
-            }
-        }
-        return count;
+        return getAllValidMoves().size();
     }
 }
